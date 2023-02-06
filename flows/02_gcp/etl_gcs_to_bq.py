@@ -18,9 +18,10 @@ def extract_from_gcs(color: str, year: int, month: int) -> Path:
 def transform(path: Path) -> pd.DataFrame:
     """Data cleaning example"""
     df = pd.read_parquet(path)
-    print(f"pre: missing passenger count: {df['passenger_count'].isna().sum()}")
-    df["passenger_count"].fillna(0, inplace=True)
-    print(f"post: missing passenger count: {df['passenger_count'].isna().sum()}")
+    print(f"rows: {len(df)}")
+    #print(f"pre: missing passenger count: {df['passenger_count'].isna().sum()}")
+    #df["passenger_count"].fillna(0, inplace=True)
+    #print(f"post: missing passenger count: {df['passenger_count'].isna().sum()}")
     return df
 
 
@@ -28,28 +29,32 @@ def transform(path: Path) -> pd.DataFrame:
 def write_bq(df: pd.DataFrame) -> None:
     """Write DataFrame to BiqQuery"""
 
-    gcp_credentials_block = GcpCredentials.load("zoom-gcp-creds")
+    gcp_credentials_block = GcpCredentials.load("gcs-sa")
 
     df.to_gbq(
-        destination_table="dezoomcamp.rides",
-        project_id="prefect-sbx-community-eng",
+        destination_table="ny-rides-374305.ny_rides_dataset.ny_yellow_rides",
+        project_id="ny-rides-374305",
         credentials=gcp_credentials_block.get_credentials_from_service_account(),
         chunksize=500_000,
         if_exists="append",
     )
 
 
-@flow()
-def etl_gcs_to_bq():
+@flow(log_prints=True)
+def etl_ny_taxi_gcs_file_to_bq(year: int, month: int, color: str) -> None:
     """Main ETL flow to load data into Big Query"""
-    color = "yellow"
-    year = 2021
-    month = 1
-
     path = extract_from_gcs(color, year, month)
     df = transform(path)
     write_bq(df)
 
+@flow()
+def etl_ny_taxi_gcs_to_bq(
+    year: int = 2019, 
+    months: list[int] = [2, 3], 
+    color: str = "yellow"
+):
+    for month in months:
+        etl_ny_taxi_gcs_file_to_bq(year, month, color)
 
 if __name__ == "__main__":
-    etl_gcs_to_bq()
+    etl_ny_taxi_gcs_to_bq()
